@@ -11,7 +11,7 @@ import pandas as pd
 import traceback
 
 st.set_page_config(page_title="Pneumothorax Classifier", layout="centered")
-st.title("🩻 Pneumothorax Type Classifier")
+st.title("Pneumothorax Type Classifier")
 st.write("Upload a chest X-ray image to classify it as Simple or Tension Pneumothorax.")
 
 # Create upload folder if not exists
@@ -65,7 +65,7 @@ if uploaded_file and model:
     os.remove(file_path)
 
     if prediction is not None:
-        st.markdown("### 🧠 Prediction Result")
+        st.markdown("###  Prediction Result")
         fig, ax = plt.subplots()
         sns.barplot(y='class', x='confidence', data=prediction, ax=ax, palette='Blues_d')
         ax.set(xlabel='Confidence', ylabel='Class')
