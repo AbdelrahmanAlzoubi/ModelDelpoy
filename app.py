@@ -11,62 +11,78 @@ import pandas as pd
 import traceback
 
 st.set_page_config(page_title="Pneumothorax Classifier", layout="centered")
-st.title("Pneumothorax Type Classifier")
-st.write("Upload a chest X-ray image to classify it as Simple or Tension Pneumothorax.")
+st.title("🩻 Pneumothorax Type Classifier")
+st.write("Upload a chest X-ray image to classify it as Pneumothorax or Not. If Pneumothorax is detected, you can classify the type (Simple vs Tension).")
 
-# Create upload folder if not exists
 UPLOAD_DIR = "uploaded"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# Try to load model
+# -------- Load models --------
 @st.cache_resource
-def load_trained_model():
+def load_models():
     try:
-        model_path = "pneumothorax_classifier.keras" if os.path.exists("pneumothorax_classifier.keras") else "pneumothorax_classifier.h5"
-        model = load_model(model_path)
-        return model
-    except Exception as e:
-        st.error("🚨 Failed to load model.")
+        base_model_path = "pneumothorax_classifier.keras" if os.path.exists("pneumothorax_classifier.keras") else "pneumothorax_classifier.h5"
+        detailed_model_path = "classification.h5"
+        base_model = load_model(base_model_path)
+        detailed_model = load_model(detailed_model_path) if os.path.exists(detailed_model_path) else None
+        return base_model, detailed_model
+    except Exception:
+        st.error("🚨 Failed to load one or more models.")
         st.text(traceback.format_exc())
-        return None
+        return None, None
 
-model = load_trained_model()
+base_model, detailed_model = load_models()
 
-# Binary labels
-class_names = ['No Pneumothorax', 'Pneumothorax']
+# Class names
+binary_classes = ['No Pneumothorax', 'Pneumothorax']
+detailed_classes = ['Simple Pneumothorax', 'Tension Pneumothorax']
 
-def predictor(img_path):
+def predict_with_model(model, img_path, classes):
     try:
         img = load_img(img_path, target_size=(224, 224))
         img = img_to_array(img)
         img = np.expand_dims(img, axis=0) / 255.0
         prob = model.predict(img)[0][0]
         prediction = {
-            'class': class_names[int(prob > 0.5)],
+            'class': classes[int(prob > 0.5)],
             'confidence': float(prob if prob > 0.5 else 1 - prob)
         }
         return pd.DataFrame([prediction])
-    except Exception as e:
+    except Exception:
         st.error("⚠️ Prediction failed.")
         st.text(traceback.format_exc())
         return None
 
-# File uploader
+# -------- Upload image --------
 uploaded_file = st.file_uploader("📤 Upload Chest X-ray", type=["jpg", "jpeg", "png"])
 
-if uploaded_file and model:
+if uploaded_file and base_model:
     file_path = os.path.join(UPLOAD_DIR, uploaded_file.name)
     with open(file_path, 'wb') as f:
         f.write(uploaded_file.getbuffer())
 
     st.image(Image.open(file_path).convert("RGB").resize((500, 300)), caption='Uploaded Image')
 
-    prediction = predictor(file_path)
+    prediction = predict_with_model(base_model, file_path, binary_classes)
     os.remove(file_path)
 
     if prediction is not None:
-        st.markdown("###  Prediction Result")
+        st.markdown("### 🧠 Primary Classification Result")
         fig, ax = plt.subplots()
         sns.barplot(y='class', x='confidence', data=prediction, ax=ax, palette='Blues_d')
         ax.set(xlabel='Confidence', ylabel='Class')
         st.pyplot(fig)
+
+        # If Pneumothorax → show second model
+        if prediction['class'][0] == "Pneumothorax" and detailed_model:
+            st.markdown("### 🔍 Further Classification: Type of Pneumothorax")
+            if st.button("Classify Pneumothorax Type"):
+                second_result = predict_with_model(detailed_model, file_path, detailed_classes)
+                if second_result is not None:
+                    st.success(f"Predicted: {second_result['class'][0]}")
+                    fig2, ax2 = plt.subplots()
+                    sns.barplot(y='class', x='confidence', data=second_result, ax=ax2, palette='Reds')
+                    ax2.set(xlabel='Confidence', ylabel='Class')
+                    st.pyplot(fig2)
+        elif prediction['class'][0] == "Pneumothorax":
+            st.warning("🔧 Detailed classification model (classification.h5) not found.")
